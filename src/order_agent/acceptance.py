@@ -15,6 +15,11 @@ from .models import Acceptance, Kind, Signals
 
 
 def build(kind: Kind, signals: Signals) -> Acceptance:
+    # 建议不接的需求不生成验收单。
+    # 之前这里落到 _kb 兜底，导致拒单报告里凭空出现「Recall@5 ≥ 0.85」，
+    # 和同一份报告里「不建议报价」直接打架——演示时被指出来很难解释。
+    if kind is Kind.X:
+        return Acceptance()
     if kind is Kind.A:
         return _agent(signals)
     if kind is Kind.D:

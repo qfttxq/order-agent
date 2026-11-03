@@ -153,6 +153,16 @@ def _quote_section(analysis: Analysis) -> list[str]:
 
 def _acceptance_section(analysis: Analysis) -> list[str]:
     acceptance = analysis.acceptance
+    if analysis.verdict.kind is Kind.X:
+        return [
+            "## 四、验收单",
+            "",
+            "不适用——建议不接的需求不生成验收单。",
+            "",
+            "如果客户能改成「导出文件 → 处理后回传」这类不依赖界面的路径，"
+            "按新的需求描述重新跑一次，再决定是否报价。",
+            "",
+        ]
     if not acceptance.items:
         return []
 

@@ -172,3 +172,20 @@ def test_poc_stays_cheapest_tier():
 def test_multi_system_becomes_main_tier():
     analysis = run("每天把订单录进 ERP、企业微信、钉钉，想全自动。")
     assert analysis.quote.main == "多系统 Agent"
+
+
+def test_rejected_brief_has_no_acceptance_sheet():
+    """拒单报告里不能出现知识库验收单。
+
+    这是实际被抓到的矛盾：报告写着「不建议报价」，下面却列着
+    「Recall@5 ≥ 0.85」——面试演示时客户一眼就看出是模板硬套的。
+    """
+    from order_agent.report import render
+
+    analysis = run("要个机器人自动点网页上的按钮，把 Excel 里的数据一条条填进去，一天 200 条。")
+    assert analysis.verdict.kind is Kind.X
+    assert analysis.acceptance.items == []
+
+    text = render(analysis)
+    assert "Recall@5" not in text
+    assert "不适用" in text
