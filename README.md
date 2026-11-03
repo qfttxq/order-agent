@@ -155,14 +155,14 @@ order-agent/
 │  └─ cli.py          # analyze / batch / verify
 ├─ samples/           # 三批评测样本
 ├─ eval/run_eval.py   # 评测脚本
-├─ tests/             # 36 个测试
+├─ tests/             # 40 个测试
 └─ reports/           # 生成的报告
 ```
 
 ## 测试
 
 ```bash
-python -m pytest -q     # 36 passed
+python -m pytest -q     # 40 passed
 ```
 
 测试覆盖的不是「函数能不能跑」，而是真实踩过的坑：
@@ -172,6 +172,7 @@ python -m pytest -q     # 36 passed
 - `test_excel_is_not_business_system` — Excel 算成业务系统，会把数据处理单判成 Agent 单
 - `test_known_doc_count_is_not_asked_again` — 已经说了 300 份还问「一共多少份」
 - `test_verdict_reasons_quote_different_fragments` — 三条依据引用同一句话，客户一眼看出是模板
+- `test_rejected_brief_has_no_acceptance_sheet` — 写着「不建议报价」，下面却列着「Recall@5 ≥ 0.85」
 
 ## 许可
 
