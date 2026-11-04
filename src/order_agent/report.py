@@ -49,6 +49,13 @@ def _headline(analysis: Analysis) -> str:
         if target is None and analysis.quote.tiers:
             target = analysis.quote.tiers[0]
         budget = analysis.brief.budget or analysis.signals.budget_in_text
+        # 规模未知时不要写成「报价从 X 档起谈」——那个数字是试算值，
+        # 客户会当成承诺记住，等确认总量后再改口就变成「坐地起价」
+        if target and analysis.quote.provisional:
+            return (
+                f"**建议接，直接约沟通。** 规模未确认，暂按「{target.name}」档试算"
+                f"（{target.price_text}）；先问清总量再给准数，别把它当报价说出口。"
+            )
         if target and budget and budget < target.price_low:
             return (
                 f"**值得谈，但先谈预算。** 客户预算 ¥{budget:,} 低于「{target.name}」下限 "
@@ -115,10 +122,17 @@ def _quote_section(analysis: Analysis) -> list[str]:
         return ["## 三、报价", "", "不建议报价。", ""]
 
     lines = ["## 三、报价建议", ""]
+    if quote.provisional:
+        lines.append(
+            "> **以下是试算，不是最终报价。** 客户没有给出语料/数据规模，"
+            "价格按最低档的假设量测算。确认总量后必须重算再发——"
+            "把试算值当报价说出去，后面再改就成了坐地起价。"
+        )
+        lines.append("")
     lines.append("| 档位 | 报价 | 周期 |")
     lines.append("|---|---|---|")
     for tier in quote.tiers:
-        days = f"{tier.days} 天" if tier.name != "按月维护" else "每月"
+        days = "每月" if tier.period == "month" else f"{tier.days} 天"
         lines.append(f"| {tier.name} | {tier.price_text} | {days} |")
     lines.append("")
 

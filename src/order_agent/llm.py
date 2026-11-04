@@ -103,18 +103,31 @@ def review(brief: Brief, signals: Signals) -> Opinion | None:
         with urllib.request.urlopen(request, timeout=TIMEOUT) as response:
             body = json.loads(response.read().decode("utf-8"))
         content = body["choices"][0]["message"]["content"]
-    except (urllib.error.URLError, KeyError, IndexError, json.JSONDecodeError, TimeoutError):
+    except (
+        urllib.error.URLError,
+        KeyError,
+        IndexError,
+        TypeError,
+        json.JSONDecodeError,
+        TimeoutError,
+    ):
         return None
 
+    # 模型走 tool_calls、或被安全策略拦截时，content 是 null。
+    # 之前这里不校验，一路带到 re.search 里崩 TypeError——而本模块开头的
+    # 承诺是「任何失败都返回 None，绝不抛出」，实现和承诺对不上。
     return _parse(content, model)
 
 
-def _parse(content: str, model: str) -> Opinion | None:
+def _parse(content: str | None, model: str) -> Opinion | None:
     """严格解析。
 
     这里不做「猜一个最接近的」这种容错——如果模型返回了 K/A/D/X 之外的东西，
     说明它没按格式来，那它的判断也不可信，直接丢弃比勉强采用更安全。
     """
+    if not isinstance(content, str) or not content.strip():
+        return None
+
     match = re.search(r"\{[^{}]*\}", content, re.S)
     if not match:
         return None

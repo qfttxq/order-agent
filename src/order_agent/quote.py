@@ -31,6 +31,11 @@ PAYMENT_TERMS = [
 # 实测普遍比云端方案多 30%–60% 工时。
 ONPREM_FACTOR = 1.4
 
+# 价格乘了系数、工期也必须跟着乘。只加价不加工期的报价单是自相矛盾的：
+# 客户按工期排资源，到期交不出货就是违约。取 1.3 而不是 1.4，
+# 因为多出来的工时里有相当一部分可以并行（硬件到货与语料处理）。
+ONPREM_DAYS_FACTOR = 1.3
+
 
 def build(kind: Kind, signals: Signals, brief: Brief) -> Quote:
     if kind is Kind.X:
@@ -51,7 +56,13 @@ def build(kind: Kind, signals: Signals, brief: Brief) -> Quote:
         for tier in tiers:
             tier.price_low = _round(tier.price_low * ONPREM_FACTOR)
             tier.price_high = _round(tier.price_high * ONPREM_FACTOR)
-        basis.append(f"要求私有化/内网部署，工时按 ×{ONPREM_FACTOR} 上调")
+            # 按月维护档的 days 只是一个月的基准，不是工期，不能乘系数
+            if tier.period == "once":
+                tier.days = max(tier.days + 3, int(round(tier.days * ONPREM_DAYS_FACTOR)))
+        basis.append(
+            f"要求私有化/内网部署，报价 ×{ONPREM_FACTOR}、工期 ×{ONPREM_DAYS_FACTOR}"
+            f"（按月维护档不计工期）"
+        )
 
     if signals.has("urgency"):
         basis.append("客户时间要求紧，如需插队需另行确认排期与加急费用")
@@ -62,19 +73,46 @@ def build(kind: Kind, signals: Signals, brief: Brief) -> Quote:
     if budget and tiers:
         _note_budget_gap(budget, tiers, main, basis)
 
-    return Quote(tiers=tiers, basis=basis, payment=PAYMENT_TERMS, net_ratio=PLATFORM_NET_RATIO, main=main)
+    # K/D 两类的成本主体是「量」，量没给就只能按下限试算
+    provisional = kind in (Kind.K, Kind.D) and signals.doc_count is None
+
+    return Quote(
+        tiers=tiers,
+        basis=basis,
+        payment=PAYMENT_TERMS,
+        net_ratio=PLATFORM_NET_RATIO,
+        main=main,
+        provisional=provisional,
+    )
 
 
 def _kb_tiers(signals: Signals) -> tuple[list[Tier], list[str], str]:
-    docs = signals.doc_count or 50
-    basis = [f"按语料规模估算：{docs} {signals.doc_unit}"]
+    if signals.doc_count:
+        docs = signals.doc_count
+        approx = ""
+        basis = [f"按语料规模估算：{docs} {signals.doc_unit}"]
+    else:
+        # 客户没说规模：仍然要试算出一个数字，否则这一步什么都给不出。
+        # 但文案必须写成「试算」而不是「估算」——把它写成陈述句，等于把假设
+        # 伪装成客户提供的事实，这在第一次沟通里就会被当场问住。
+        docs = 50
+        approx = "约 "
+        basis = [
+            f"客户未提供语料规模，以下按 {docs} {signals.doc_unit}下限试算，"
+            "不是确认后的报价；问清总量后需重算"
+        ]
 
     if docs < 50:
         standard = (18000, 18000)
         basis.append("50 份以内，按标准档下限计")
     elif docs <= 200:
         standard = (18000, 35000)
-        basis.append("50–200 份，标准档区间内")
+        # 试算时不能说「50–200 份」——读者会以为这是客户的真实量级
+        basis.append(
+            "50–200 份，标准档区间内"
+            if not approx
+            else f"试算量落在 50–200 {signals.doc_unit}区间，按标准档报价"
+        )
     else:
         low = 35000 + (docs - 200) // 100 * 3000
         # 区间宽度至少留 25%：报价只报一个点，等于把「扫描件多、重复多、格式杂」
@@ -106,7 +144,7 @@ def _kb_tiers(signals: Signals) -> tuple[list[Tier], list[str], str]:
             price_high=standard[1],
             days=max(7, docs // 20),
             includes=[
-                f"{docs} 份文档解析、清洗、切分与入库",
+                f"{approx}{docs} {signals.doc_unit}文档解析、清洗、切分与入库",
                 "向量化 + 重排调优，交付召回率与忠实性实测",
                 "30 题评测集与交付报告",
                 "一次线上答疑与调优",
@@ -215,6 +253,7 @@ def _agent_tiers(signals: Signals) -> tuple[list[Tier], list[str], str]:
             price_low=monthly[0],
             price_high=monthly[1],
             days=30,
+            period="month",
             includes=[
                 "每月固定巡检与问题修复",
                 "上游系统变更后的适配",
@@ -228,8 +267,18 @@ def _agent_tiers(signals: Signals) -> tuple[list[Tier], list[str], str]:
 
 
 def _data_tiers(signals: Signals) -> tuple[list[Tier], list[str], str]:
-    records = signals.doc_count or 1000
-    basis = [f"按处理量估算：{records} 条记录"]
+    if signals.doc_count:
+        records = signals.doc_count
+        approx = ""
+        basis = [f"按处理量估算：{records} 条记录"]
+    else:
+        # 和 K 类同一处理：量未知时给的是试算值，不是估算结果
+        records = 1000
+        approx = "约 "
+        basis = [
+            f"客户未提供处理量，以下按 {records} 条试算，不是确认后的报价；"
+            "问清量级后需重算"
+        ]
 
     if records <= 5000:
         main = (8000, 15000)
@@ -245,7 +294,7 @@ def _data_tiers(signals: Signals) -> tuple[list[Tier], list[str], str]:
             price_high=main[1],
             days=max(7, records // 10000 + 7),
             includes=[
-                f"{records} 条数据的采集/清洗/结构化",
+                f"{approx}{records} 条数据的采集/清洗/结构化",
                 "可重复运行的脚本与使用说明",
                 "抽样 100 条做准确率校验并出具报告",
             ],
@@ -264,6 +313,7 @@ def _data_tiers(signals: Signals) -> tuple[list[Tier], list[str], str]:
             price_low=4000,
             price_high=8000,
             days=30,
+            period="month",
             includes=["每月运行保障与修复", "数据源小范围适配", "月度数据质量报告"],
             excludes=["不含新增数据源"],
         ),

@@ -18,9 +18,35 @@ from . import llm, pipeline, report
 from .models import Brief, Signals
 
 
+def _read_file(path_text: str) -> str:
+    """按 utf-8 → gb18030 依次尝试解码。
+
+    Windows 上「记事本 → 另存为 → ANSI」就是 GBK，而客户发来的需求文档
+    几乎都是这个来源。只认 utf-8 的后果不是报个错，是最高频的真实输入
+    直接抛一串堆栈——用户看到的是 traceback，不是「换个编码再试」。
+    """
+    path = Path(path_text)
+    try:
+        raw = path.read_bytes()
+    except OSError as exc:
+        raise SystemExit(f"读不到文件 {path}：{exc.strerror or exc}") from None
+
+    # GB18030 几乎能解码任意字节序列，二进制文件会被「成功」解成一堆乱码。
+    # 先按 NUL 字节判断，免得把一份 docx 当需求分析出离谱结论。
+    if b"\x00" in raw:
+        raise SystemExit(f"{path} 看起来不是文本文件，请另存为 txt 后重试")
+
+    for encoding in ("utf-8", "gb18030"):
+        try:
+            return raw.decode(encoding).strip()
+        except UnicodeDecodeError:
+            continue
+    raise SystemExit(f"无法识别 {path} 的编码，请用记事本另存为 UTF-8 后重试")
+
+
 def _read_text(args: argparse.Namespace) -> str:
     if args.file:
-        return Path(args.file).read_text(encoding="utf-8").strip()
+        return _read_file(args.file)
     if args.text:
         return " ".join(args.text).strip()
     # 支持管道：cat req.txt | order-agent analyze

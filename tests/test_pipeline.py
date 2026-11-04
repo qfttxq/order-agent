@@ -155,6 +155,77 @@ def test_report_for_reject_has_no_quote_table():
     assert "| 档位 | 报价 | 周期 |" not in text
 
 
+def test_unknown_doc_count_is_marked_provisional():
+    """客户没说有多少份，报告不能写成「按语料规模估算：50 份」。
+
+    那个数字是我们编的。写成陈述句，等于把假设伪装成客户提供的事实——
+    客户看到的第一反应是「我没说 50 份」，而这一步恰好发生在建立信任的早期。
+    """
+    analysis = run("员工查制度不方便，想做个问答系统，让他们能直接问。")
+    assert analysis.signals.doc_count is None
+    assert analysis.quote.provisional is True
+    basis = " ".join(analysis.quote.basis)
+    assert "按语料规模估算：50" not in basis
+    assert "未提供语料规模" in basis
+
+
+def test_known_doc_count_is_not_provisional():
+    analysis = run(KB_TEXT)
+    assert analysis.quote.provisional is False
+    assert "按语料规模估算：300" in " ".join(analysis.quote.basis)
+
+
+def test_report_marks_provisional_quote_as_trial():
+    from order_agent.report import render
+
+    text = render(run("员工查制度不方便，想做个问答系统，让他们能直接问。"))
+    assert "以下是试算" in text
+    assert "按语料规模估算：50" not in text
+
+
+def test_provisional_headline_says_trial_not_starting_price():
+    """首行结论写「报价从 ¥18,000 起谈」，客户会当成承诺记住；规模未知时只能说「暂按…试算」。"""
+    from order_agent.report import render
+
+    analysis = run(
+        "公司积累了大量产品手册、售后政策和历史工单，客服每次都要翻半天还找不到准确答案，"
+        "想做个能直接提问的知识库，同时要接入企业微信和钉钉两个入口，预算 15 万，希望三个月内上线。"
+    )
+    assert analysis.quote.provisional is True
+    headline = render(analysis).splitlines()[2]
+    assert "试算" in headline
+    assert "起谈" not in headline
+
+
+def test_data_quote_also_marks_unknown_volume():
+    """D 类和 K 类是同一处毛病，不能只修一边。"""
+    analysis = run("有一批客户资料要整理成表格，字段统一一下。")
+    assert analysis.verdict.kind is Kind.D
+    assert analysis.quote.provisional is True
+    assert "未提供处理量" in " ".join(analysis.quote.basis)
+
+
+def test_onprem_raises_days_not_only_price():
+    """私有化只加价不加工期，是一份自相矛盾的报价单：客户按工期排资源，到期交不出就是违约。"""
+    normal = run("每天把订单录进 ERP，想自动化。")
+    onprem = run("每天把订单录进 ERP，想自动化，必须私有化部署、不能上外网。")
+    assert onprem.verdict.kind is Kind.A
+
+    plain = {tier.name: tier for tier in normal.quote.tiers}
+    private = {tier.name: tier for tier in onprem.quote.tiers}
+
+    assert private["单流程生产版"].price_low > plain["单流程生产版"].price_low
+    assert private["单流程生产版"].days > plain["单流程生产版"].days
+    assert private["单流程 PoC"].days > plain["单流程 PoC"].days
+
+
+def test_onprem_does_not_inflate_monthly_tier_days():
+    """按月维护档的 days 是「一个月」的基准，不是工期，乘系数就错了。"""
+    onprem = run("每天把订单录进 ERP，想自动化，必须私有化部署。")
+    monthly = next(tier for tier in onprem.quote.tiers if tier.period == "month")
+    assert monthly.days == 30
+
+
 def test_no_tier_has_inverted_range():
     """¥80,000 – ¥60,000 这种倒挂区间在报价单上是致命的，任何档位都不允许出现。"""
     for text in (KB_TEXT, AGENT_TEXT, "有 8000 条数据要采集整理成表格", "对接 5 个系统做自动化"):

@@ -152,6 +152,10 @@ class Tier:
     days: int
     includes: list[str] = field(default_factory=list)
     excludes: list[str] = field(default_factory=list)
+    # 周期单位。once = 一次性交付（days 是工期），month = 按月（days 只是月度基准，
+    # 不参与任何工期加成）。用字段表达而不是靠档位名称判断——早先 report 里硬编码了
+    # `if tier.name != "按月维护"`，改一次文案就会静默失效。
+    period: str = "once"
 
     def __post_init__(self) -> None:
         # 防呆：报价区间倒挂（¥80,000 – ¥60,000）是实际发生过的 bug，
@@ -176,6 +180,10 @@ class Quote:
     # 主推档的名称。诊断版和 PoC 是引流/试水档，不能拿来当「预算够不够」的基准，
     # 所以单独标出来，避免「客户预算 3 万 → 提示低于 ¥3,500 诊断版」这种荒谬判断。
     main: str = ""
+    # 这些价格是按假设的规模试算出来的，不是客户确认过的事实。
+    # 客户没说文档数时，报价照旧给（否则什么都没得谈），但报告必须把这一点说出来——
+    # 「按语料规模估算：50 份」这种写法是把我们编的数当成了客户给的数。
+    provisional: bool = False
 
 
 @dataclass

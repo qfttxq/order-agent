@@ -155,14 +155,14 @@ order-agent/
 │  └─ cli.py          # analyze / batch / verify
 ├─ samples/           # 三批评测样本
 ├─ eval/run_eval.py   # 评测脚本
-├─ tests/             # 40 个测试
+├─ tests/             # 62 个测试
 └─ reports/           # 生成的报告
 ```
 
 ## 测试
 
 ```bash
-python -m pytest -q     # 40 passed
+python -m pytest -q     # 62 passed
 ```
 
 测试覆盖的不是「函数能不能跑」，而是真实踩过的坑：
@@ -173,6 +173,10 @@ python -m pytest -q     # 40 passed
 - `test_known_doc_count_is_not_asked_again` — 已经说了 300 份还问「一共多少份」
 - `test_verdict_reasons_quote_different_fragments` — 三条依据引用同一句话，客户一眼看出是模板
 - `test_rejected_brief_has_no_acceptance_sheet` — 写着「不建议报价」，下面却列着「Recall@5 ≥ 0.85」
+- `test_unknown_doc_count_is_marked_provisional` — 客户没说多少份，报告却写「按语料规模估算：50 份」，把假设说成事实
+- `test_onprem_raises_days_not_only_price` — 私有化价格 ×1.4、工期一天不加，报价单自相矛盾
+- `test_gbk_file_analyzes_end_to_end` — 记事本存成 ANSI 的需求文件直接崩栈，这是最高频的真实输入
+- `test_null_content_returns_none` — 模型返回 `content: null` 时崩 TypeError，与「绝不抛出」的承诺相反
 
 ## 许可
 
